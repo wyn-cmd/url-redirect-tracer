@@ -30,7 +30,7 @@ class _Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    # Keep the test output clean; the default handler prints every request.
+    # Suppress default request logging to keep test output clean.
     def log_message(self, fmt, *args):
         pass
 
