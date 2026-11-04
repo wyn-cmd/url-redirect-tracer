@@ -49,6 +49,13 @@ def _cookie_names(headers):
     return names
 
 
+def _header_value(headers, name):
+    # Header lookup that treats a missing header block as no value.
+    if headers is None:
+        return None
+    return headers.get(name)
+
+
 def fetch_once(url, timeout=5.0, user_agent=DEFAULT_USER_AGENT):
     # Single request, no redirect following. Returns (status, headers, error).
     request = urllib.request.Request(
@@ -72,8 +79,10 @@ def fetch_once(url, timeout=5.0, user_agent=DEFAULT_USER_AGENT):
         return None, None, str(exc)
 
 
-def transition_warnings(current_url, next_url, visited):
+def transition_warnings(current_url, next_url, visited, next_key=None):
     # Compare two consecutive URLs and return the kinds of concern they raise.
+    # Callers that already normalised next_url pass next_key so the canonical
+    # form is not rebuilt here.
     kinds = []
     current = urllib.parse.urlsplit(current_url)
     nxt = urllib.parse.urlsplit(next_url)
@@ -81,7 +90,9 @@ def transition_warnings(current_url, next_url, visited):
         kinds.append("https_downgrade")
     if nxt.netloc and nxt.netloc.lower() != current.netloc.lower():
         kinds.append("cross_domain")
-    if _normalize(next_url) in visited:
+    if next_key is None:
+        next_key = _normalize(next_url)
+    if next_key in visited:
         kinds.append("redirect_loop")
     return kinds
 
@@ -108,8 +119,8 @@ def trace(start_url, max_hops=10, timeout=5.0, user_agent=DEFAULT_USER_AGENT):
         hop = {
             "url": current,
             "status": status,
-            "location": headers.get("Location") if headers is not None else None,
-            "server": headers.get("Server") if headers is not None else None,
+            "location": _header_value(headers, "Location"),
+            "server": _header_value(headers, "Server"),
             "cookies": _cookie_names(headers),
         }
         hops.append(hop)
@@ -125,11 +136,15 @@ def trace(start_url, max_hops=10, timeout=5.0, user_agent=DEFAULT_USER_AGENT):
 
         nxt = urllib.parse.urljoin(current, hop["location"])
         hop["next"] = nxt
-        for kind in transition_warnings(current, nxt, visited):
+        # Normalise the next URL once and reuse it for both the loop warning and
+        # the visited set, instead of canonicalising it twice per hop.
+        next_key = _normalize(nxt)
+        kinds = transition_warnings(current, nxt, visited, next_key)
+        for kind in kinds:
             warnings.append({"kind": kind, "url": current, "next": nxt})
-        if _normalize(nxt) in visited:
+        if "redirect_loop" in kinds:
             break
-        visited.add(_normalize(nxt))
+        visited.add(next_key)
         current = nxt
     else:
         # The loop ran out of budget while the chain was still redirecting.
