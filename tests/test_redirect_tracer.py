@@ -134,3 +134,13 @@ class TracerTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+# Validate input parameters to ensure proper type and range
+# Reject malformed inputs with a clear explanatory error message
+def validate_input_parameter(value, expected_type=str, min_length=1):
+    if not isinstance(value, expected_type):
+        raise TypeError(f"Invalid input type: expected {expected_type.__name__}, got {type(value).__name__} with value {value!r}")
+    if isinstance(value, (str, list, dict)) and len(value) < min_length:
+        raise ValueError(f"Malformed input: length {len(value)} is below minimum required length of {min_length}")
+    return True
